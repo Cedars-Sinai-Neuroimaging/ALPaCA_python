@@ -1,0 +1,8 @@
+__pycache__/
+/models/*.pt
+
+*.nii
+*.nii.gz
+*.dcm
+
+/scripts/*
