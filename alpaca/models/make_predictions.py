@@ -160,7 +160,7 @@ def make_predictions(
 
     # ========== [STAGE 1] LOAD AND VALIDATE INPUT ========== #
     if verbose:
-        print("[1/6] Loading inputs...")
+        print("[1/6] Loading inputs")
 
     # Validate inputs provided
     if any(x is None for x in [t1, flair, epi, phase, labeled_candidates, eroded_candidates]):
@@ -210,7 +210,7 @@ def make_predictions(
 
     # ========== [STAGE 2] LOAD MODELS ========== #
     if verbose:
-        print(f"[2/6] Loading models...")
+        print(f"[2/6] Loading models")
 
     model_dir = Path(model_dir)
 
@@ -246,7 +246,7 @@ def make_predictions(
 
    # ========== [STAGE 3] EXTRACT ALL PATCHES ========== #
     if verbose:
-        print(f"[3/6] Extracting patches...")
+        print(f"[3/6] Extracting patches")
 
     all_predictions = np.zeros((n_lesions, N_BIOMARKERS)) 
     all_uncertainties = np.zeros((n_lesions, N_BIOMARKERS))
@@ -308,7 +308,7 @@ def make_predictions(
 
     # ========== [STAGE 4] RUN BATCH THROUGH MODELS ========== #
     if verbose:
-        print(f"[4/6] Running inference...")
+        print(f"[4/6] Running inference")
 
     all_model_predictions = []
 
@@ -355,7 +355,7 @@ def make_predictions(
 
     # ========== [STAGE 5] THRESHOLD TO BINARY PREDICTIONS ========== #
     if verbose:
-        print(f"[5/6] Applying thresholds...")
+        print(f"[5/6] Applying thresholds")
 
     lesion_thresh = THRESHOLDS['lesion'][lesion_priority]
     prl_thresh = THRESHOLDS['prl'][prl_priority]
@@ -377,7 +377,7 @@ def make_predictions(
 
     # ========== [STAGE 6] CREATE OUTPUT MASKS ========== #
     if verbose:
-        print(f"[6/6] Creating output masks...")
+        print(f"[6/6] Creating output masks")
 
     # Clever encoding
     lesion_codes = binary_lesion * 1 + binary_prl * 2 + binary_cvs * 4 
@@ -470,11 +470,11 @@ def make_predictions(
             print("\n┌" + "─"*38 + "┐")
             print("│" + " Lesion Inference ".center(38) + "│")
             print("└" + "─"*38 + "┘")   
-            print(f"  Total Lesions      : {predictions_df['lesion'].sum()}")
-            print(f"  Lesions only       : {np.sum(lesion_codes == 1)}")
-            print(f"  Lesions + PRL      : {np.sum(lesion_codes == 3)}")
-            print(f"  Lesions + CVS      : {np.sum(lesion_codes == 5)}")
-            print(f"  Lesions + PRL + CVS: {np.sum(lesion_codes == 7)}")
+            print(f"  Total Lesions       : {predictions_df['lesion'].sum()}")
+            print(f"  Lesions only        : {np.sum(lesion_codes == 1)}")
+            print(f"  Lesions + PRL       : {np.sum(lesion_codes == 3)}")
+            print(f"  Lesions + CVS       : {np.sum(lesion_codes == 5)}")
+            print(f"  Lesions + PRL + CVS : {np.sum(lesion_codes == 7)}")
 
     # Return results
     results = {

@@ -39,6 +39,18 @@ def erode_labels(labels: np.ndarray, iterations: int = 1) -> np.ndarray:
     
     return eroded
 
+def is_normalized(data: np.ndarray, tolerance: float = 0.01) -> bool:
+    """Check if data is already normalized by checking ALL non-zero voxels."""
+    # Use absolute value to include negative voxels
+    mask = (np.abs(data) > 1e-6)
+    
+    if mask.sum() == 0:
+        return False
+    
+    mean = data[mask].mean()
+    std = data[mask].std()
+    
+    return (abs(mean) < tolerance) and (abs(std - 1.0) < tolerance)
 
 def minimal_preprocess(
     t1_path: str, 
@@ -62,7 +74,7 @@ def minimal_preprocess(
     
     # [1/4] Load all images
     if verbose:
-        print("[1/4] Loading images...")
+        print("[1/4] Loading images")
     
     t1_nii = nib.load(t1_path)
     flair_nii = nib.load(flair_path)
@@ -78,25 +90,50 @@ def minimal_preprocess(
     
     # [2/4] Normalize images
     if verbose:
-        print("[2/4] Normalizing modalities...")
+        print("[2/4] Normalizing modalities")
     
-    t1_norm = normalize_image(t1, t1 > 0)
-    flair_norm = normalize_image(flair, flair > 0)
-    epi_norm = normalize_image(epi, epi > 0)
-    phase_norm = normalize_image(phase, phase > 0)
+    # Check if already normalized before computing masks
+    if is_normalized(t1):
+        if verbose:
+            print("  T1    : Already normalized")
+        t1_norm = t1
+    else:
+        t1_norm = normalize_image(t1, t1 > 0)
     
+    if is_normalized(flair):
+        if verbose:
+            print("  FLAIR : Already normalized")
+        flair_norm = flair
+    else:
+        flair_norm = normalize_image(flair, flair > 0)
+    
+    if is_normalized(epi):
+        if verbose:
+            print("  EPI   : Already normalized")
+        epi_norm = epi
+    else:
+        epi_norm = normalize_image(epi, epi > 0)
+    
+    if is_normalized(phase):
+        if verbose:
+            print("  Phase : Already normalized")
+        phase_norm = phase
+    else:
+        phase_norm = normalize_image(phase, phase > 0)
+
     # [3/4] Erode labels
-    if verbose:
-        print("[3/4] Eroding lesion candidates...")
-    
     if eroded_candidates_path is not None:
+        if verbose:
+            print("[3/4] Eroded candidates provided")
         eroded = nib.load(eroded_candidates_path).get_fdata().astype(np.int16)
     else:
+        if verbose:
+            print("[3/4] Eroding lesion candidates")
         eroded = erode_labels(labels, iterations=1)
     
     # [4/4] Save preprocessed files
     if verbose:
-        print("[4/4] Saving preprocessed files...")
+        print("[4/4] Saving preprocessed files")
     
     t1_out = output_dir / "t1_final.nii.gz"
     flair_out = output_dir / "flair_final.nii.gz"
@@ -113,7 +150,7 @@ def minimal_preprocess(
     nib.save(nib.Nifti1Image(eroded.astype(np.int16), labels_nii.affine, labels_nii.header), eroded_out)
     
     if verbose:
-        print("[Done] Ready for inference.")
+        print("[Done] Ready for inference")
     
     return {
         't1': str(t1_out),
