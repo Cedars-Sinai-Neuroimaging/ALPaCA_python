@@ -26,6 +26,7 @@ alpaca-download-models
   - predictions.csv - Binary predictions (lesion/PRL/CVS) per lesion
   - probabilities.csv - Probability scores per lesion
   - uncertainties.csv - Uncertainty estimates per lesion
+  - model_disagreement.csv - Disagreement between models per lesion
 
 **Command Line**
 
