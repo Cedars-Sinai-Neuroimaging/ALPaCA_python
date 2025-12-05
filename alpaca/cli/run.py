@@ -68,54 +68,70 @@ def auto_detect_files(subject_dir):
 
 def main():
     parser = argparse.ArgumentParser(
-        description='Run ALPaCA inference pipeline',
+        description='ALPaCA: Automated Lesion, PRL, and CVS Analysis',
         formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog=__doc__
+        epilog="""
+Examples:
+  # Auto-detect files
+  alpaca-run --subject-dir /path/to/subject -o results/
+
+  # Specify files explicitly
+  alpaca-run --t1 t1.nii.gz --flair flair.nii.gz --epi epi.nii.gz \\
+             --phase phase.nii.gz --labels labels.nii.gz -o results/
+"""
     )
 
-    # Mode selection
-    mode_group = parser.add_mutually_exclusive_group(required=True)
-    mode_group.add_argument('--subject-dir',
-                           help='Auto-detect files from subject directory')
-    mode_group.add_argument('--t1',
-                           help='T1-weighted image (explicit mode)')
+    # Input mode
+    input_group = parser.add_argument_group('Input (choose one)')
+    mode = input_group.add_mutually_exclusive_group(required=True)
+    mode.add_argument('--subject-dir', metavar='DIR',
+                      help='Auto-detect files from directory')
+    mode.add_argument('--t1', metavar='FILE',
+                      help='T1 image (requires --flair --epi --phase --labels)')
 
-    # Explicit mode arguments
-    parser.add_argument('--flair', help='FLAIR image')
-    parser.add_argument('--epi', help='EPI magnitude image')
-    parser.add_argument('--phase', help='EPI phase image (unwrapped)')
-    parser.add_argument('--labels', help='Labeled lesion candidates')
-    parser.add_argument('--eroded-labels', help='Pre-eroded labels (skips erosion)')
+    # Explicit mode files
+    explicit_group = parser.add_argument_group('Explicit mode (when using --t1)')
+    explicit_group.add_argument('--flair', metavar='FILE', help='FLAIR image')
+    explicit_group.add_argument('--epi', metavar='FILE', help='EPI magnitude')
+    explicit_group.add_argument('--phase', metavar='FILE', help='EPI phase (unwrapped)')
+    explicit_group.add_argument('--labels', metavar='FILE', help='Lesion labels')
+    explicit_group.add_argument('--eroded-labels', metavar='FILE', help='Pre-eroded labels (optional)')
 
     # Output
-    parser.add_argument('-o', '--output', required=True,
-                       help='Output directory')
-    parser.add_argument('--model-dir', default=None,
-                       help='Directory with model weights (default: <package>/models)')
+    output_group = parser.add_argument_group('Output')
+    output_group.add_argument('-o', '--output', required=True, metavar='DIR',
+                              help='Output directory')
+    output_group.add_argument('--model-dir', metavar='DIR',
+                              help='Model directory (default: <package>/models)')
 
-    # Inference options
-    parser.add_argument('--n-patches', type=int, default=20,
-                       help='Number of patches per lesion (default: 20)')
-    parser.add_argument('--n-models', type=int, default=10,
-                       help='Number of CV models to use (default: 10)')
-    parser.add_argument('--no-rotate', action='store_true',
-                       help='Disable random patch rotation')
-    parser.add_argument('--seed', type=int, default=None,
-                       help='Random seed for reproducibility')
-    parser.add_argument('--return-prob-maps', action='store_true',
-                       help='Save probability maps')
+    # Inference parameters
+    inference_group = parser.add_argument_group('Inference parameters')
+    inference_group.add_argument('--n-patches', type=int, default=20, metavar='N',
+                                 help='Patches per lesion (default: 20)')
+    inference_group.add_argument('--n-models', type=int, default=10, metavar='N',
+                                 help='CV models to use (default: 10)')
+    inference_group.add_argument('--no-rotate', action='store_true',
+                                 help='Disable patch rotation')
+    inference_group.add_argument('--seed', type=int, metavar='N',
+                                 help='Random seed')
+    inference_group.add_argument('--return-prob-maps', action='store_true',
+                                 help='Save probability maps')
 
     # Thresholds
-    parser.add_argument('--lesion-threshold', default='youdens_j',
-                       choices=['youdens_j', 'specificity', 'sensitivity'])
-    parser.add_argument('--prl-threshold', default='youdens_j',
-                       choices=['youdens_j', 'specificity', 'sensitivity'])
-    parser.add_argument('--cvs-threshold', default='youdens_j',
-                       choices=['youdens_j', 'specificity', 'sensitivity'])
+    threshold_group = parser.add_argument_group('Thresholds')
+    threshold_group.add_argument('--lesion-threshold', default='youdens_j',
+                                 choices=['youdens_j', 'specificity', 'sensitivity'],
+                                 help='Lesion threshold (default: youdens_j)')
+    threshold_group.add_argument('--prl-threshold', default='youdens_j',
+                                 choices=['youdens_j', 'specificity', 'sensitivity'],
+                                 help='PRL threshold (default: youdens_j)')
+    threshold_group.add_argument('--cvs-threshold', default='youdens_j',
+                                 choices=['youdens_j', 'specificity', 'sensitivity'],
+                                 help='CVS threshold (default: youdens_j)')
 
     # Other
     parser.add_argument('--verbose', action='store_true',
-                       help='Print progress messages')
+                        help='Print progress')
 
     args = parser.parse_args()
 
