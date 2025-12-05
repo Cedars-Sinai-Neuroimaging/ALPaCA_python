@@ -26,7 +26,7 @@ import warnings
 
 warnings.filterwarnings('ignore', category=UserWarning, message='Can\'t initialize NVML')
 
-from ..preprocessing.pipeline import run_alpaca
+from ..preprocessing.pipeline import preprocess, run_alpaca
 
 
 def find_file(directory, patterns):
