@@ -58,7 +58,7 @@ def preprocess(
 
     # Erode if not provided
     if eroded_candidates is None:
-        if verbse:
+        if verbose:
             print("Eroding lesions...")
         eroded = erode_labels(labels_array)
     else:
