@@ -1,14 +1,60 @@
 # ALPaCA Python Port
 
-Python implementation of the ALPaCA R package for MS lesion segmentation.
+Python implementation of the [ALPaCA](https://github.com/hufengling/ALPaCA) R package for MS lesion segmentation (Hu et al., 2025, *Imaging Neuroscience*). 
 
-## About
+## Installation
 
-This is a Python port of [ALPaCA](https://github.com/hufengling/ALPaCA) (Hu et al., 2025, *Imaging Neuroscience*). 
+```bash
+cd ALPacA_python
+pip install -e .
+alpaca-download-models 
+```
 
-## Notes
+## Usage
 
-- Requires pre-trained models from the original R package
-- `minimal_preprocess.py` does basic normalization and erosion
+**Input Requirements**
+
+- T1, FLAIR, EPI mag, EPI phase
+- Labled lesion candidates
+- N4 bias corrected
+- Co-registered
+- Skull-stripped
+
+**Outputs**
+
+  - alpaca_mask.nii.gz - Segmentation mask
+  - predictions.csv - Binary predictions (lesion/PRL/CVS) per lesion
+  - probabilities.csv - Probability scores per lesion
+  - uncertainties.csv - Uncertainty estimates per lesion
+
+**Command Line**
+
+```bash
+# Auto-detect files
+alpaca-run --subject-dir /path/to/subject --output results/
+
+# Specify files
+alpaca-run \
+    --t1 t1.nii.gz \
+    --flair flair.nii.gz \
+    --epi epi_mag.nii.gz \
+    --phase epi_phase.nii.gz \
+    --labels lesion_labels.nii.gz \
+    --output results/
+```
+
+**Python API**
+
+```python
+results = run_alpaca(
+    t1='t1.nii.gz',
+    flair='flair.nii.gz',
+    epi='epi.nii.gz',
+    phase='phase.nii.gz',
+    labeled_candidates='labels.nii.gz',
+    model_dir='models/',
+    output_dir='results/'
+)
+```
 
 MIT License
