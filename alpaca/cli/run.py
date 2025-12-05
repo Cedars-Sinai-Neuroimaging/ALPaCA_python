@@ -197,29 +197,34 @@ Examples:
 
     # Run ALPaCA pipeline
     try:
-        results = run_alpaca(
-            t1=t1_path,
-            flair=flair_path,
-            epi=epi_path,
-            phase=phase_path,
-            labeled_candidates=labels_path,
-            eroded_candidates=eroded_path,
-            model_dir=args.model_dir,
-            output_dir=args.output,
-            lesion_priority=args.lesion_threshold,
-            prl_priority=args.prl_threshold,
-            cvs_priority=args.cvs_threshold,
-            n_patches=args.n_patches,
-            n_models=args.n_models,
-            rotate_patches=not args.no_rotate,
-            return_probabilities=args.return_prob_maps,
-            random_seed=args.seed,
-            verbose=args.verbose
+        preprocessed = preprocess(
+                t1=t1_path,
+                flair=flair_path,
+                epi=epi_path,
+                phase=phase_path,
+                labeled_candidates=labels_path,
+                eroded_candidates=eroded_path,
+                verbose=args.verbose
         )
 
-        if args.verbose:
-            print(f"\n✓ Pipeline completed successfully")
-            print(f"✓ Results saved to: {args.output}")
+        results = make_predictions(
+                **preprocessed,
+                model_dir=model_dir,
+                output_dir=output_dir,
+                lesion_priority=args.lesion_threshold,
+                prl_priority=args.prl_threshold,
+                cvs_priority=args.cvs_threshold,
+                n_patches=args.n_patches,
+                n_models=args.n_models,
+                rotate_patches=not args.no_rotate,
+                return_probabilities=args.return_prob_maps,
+                random_seed=args.seed,
+                verbose=args.verbose
+        )
+
+        if not args.verbose:
+            print(f"\nPipeline completed successfully")
+            print(f"Results saved to: {args.output}")
 
         return 0
 

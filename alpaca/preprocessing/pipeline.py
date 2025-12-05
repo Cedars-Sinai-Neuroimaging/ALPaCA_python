@@ -16,8 +16,10 @@ def preprocess(
     phase: Union[str, np.ndarray],
     labeled_candidates: Union[str, np.ndarray],
     eroded_candidates: Optional[Union[str, np.ndarray]] = None,
-    output_dir: Optional[str] = None
+    output_dir: Optional[str] = None,
+    verbose: Optional[bool] = false
 ) -> Dict[str, np.ndarray]:
+
     """
     Preprocess images for ALPaCA inference.
 
@@ -29,6 +31,7 @@ def preprocess(
         labeled_candidates: Lesion labels (paths or arrays)
         eroded_candidates: Pre-eroded labels (optional, skips erosion if provided)
         output_dir: Optional directory to save preprocessed files
+        verbose: Verbose output
 
     Returns:
         Dict with keys: t1, flair, epi, phase, labeled_candidates, eroded_candidates
@@ -37,7 +40,11 @@ def preprocess(
         >>> preprocessed = preprocess(t1, flair, epi, phase, labels)
         >>> results = make_predictions(**preprocessed, model_dir='models/')
     """
+
     # Normalize modalities
+    if verbose:
+        print("Normalizing images...")
+
     t1_norm = normalize_image(t1)
     flair_norm = normalize_image(flair)
     epi_norm = normalize_image(epi)
@@ -51,6 +58,8 @@ def preprocess(
 
     # Erode if not provided
     if eroded_candidates is None:
+        if verbse:
+            print("Eroding lesions...")
         eroded = erode_labels(labels_array)
     else:
         if isinstance(eroded_candidates, (str, Path)):
@@ -78,6 +87,9 @@ def preprocess(
         nib.save(nib.Nifti1Image(phase_norm, affine, header), output_dir / "phase_norm.nii.gz")
         nib.save(nib.Nifti1Image(labels_array, affine, header), output_dir / "labeled_candidates.nii.gz")
         nib.save(nib.Nifti1Image(eroded, affine, header), output_dir / "eroded_candidates.nii.gz")
+
+        if verbose:
+            print(f"Saved processed images to {output_dir}")
 
     return {
         't1': t1_norm,
