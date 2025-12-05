@@ -17,7 +17,7 @@ def preprocess(
     labeled_candidates: Union[str, np.ndarray],
     eroded_candidates: Optional[Union[str, np.ndarray]] = None,
     output_dir: Optional[str] = None,
-    verbose: Optional[bool] = false
+    verbose: Optional[bool] = False
 ) -> Dict[str, np.ndarray]:
 
     """
