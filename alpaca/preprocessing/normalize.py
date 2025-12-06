@@ -12,13 +12,12 @@ def normalize_image(
 ) -> np.ndarray:
     """Z-score normalize an MRI image."""
 
-    # Load if path
     ref_nii = None
     if isinstance(image, (str, Path)):
         ref_nii = nib.load(str(image))
-        data = ref_nii.get_fdata(dtype=np.float32)
+        data = ref_nii.get_fdata()
     else:
-        data = np.asarray(image, dtype=np.float32)
+        data = np.asarray(image)
 
     # Check if already normalized (use abs to include negative values)
     check_mask = (np.abs(data) > 1e-6)
@@ -33,7 +32,7 @@ def normalize_image(
     mean = data[mask].mean()
     std = data[mask].std()
 
-    normalized = np.zeros_like(data, dtype=np.float32)
+    normalized = np.zeros_like(data)
     normalized[mask] = (data[mask] - mean) / std
 
     # Save if requested
