@@ -26,7 +26,6 @@ import warnings
 
 warnings.filterwarnings('ignore', category=UserWarning, message='Can\'t initialize NVML')
 
-from ..preprocessing.pipeline import preprocess, run_alpaca
 
 
 def find_file(directory, patterns):
@@ -197,6 +196,9 @@ Examples:
 
     # Run ALPaCA pipeline
     try:
+        from ..preprocessing.pipeline import preprocess
+        from ..models.make_predictions import make_predictions
+
         preprocessed = preprocess(
                 t1=t1_path,
                 flair=flair_path,
@@ -209,8 +211,8 @@ Examples:
 
         results = make_predictions(
                 **preprocessed,
-                model_dir=model_dir,
-                output_dir=output_dir,
+                model_dir=args.model_dir,
+                output_dir=args.output,
                 lesion_priority=args.lesion_threshold,
                 prl_priority=args.prl_threshold,
                 cvs_priority=args.cvs_threshold,
