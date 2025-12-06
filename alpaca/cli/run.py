@@ -206,6 +206,7 @@ Examples:
                 phase=phase_path,
                 labeled_candidates=labels_path,
                 eroded_candidates=eroded_path,
+                output_dir=str(Path(args.output) / "preprocessed"),
                 verbose=args.verbose
         )
 

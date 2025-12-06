@@ -91,6 +91,17 @@ def preprocess(
         if verbose:
             print(f"Saved processed images to {output_dir}")
 
+        # Return file paths when saving (matches old behavior)
+        return {
+            't1': str(output_dir / "t1_norm.nii.gz"),
+            'flair': str(output_dir / "flair_norm.nii.gz"),
+            'epi': str(output_dir / "epi_norm.nii.gz"),
+            'phase': str(output_dir / "phase_norm.nii.gz"),
+            'labeled_candidates': str(output_dir / "labeled_candidates.nii.gz"),
+            'eroded_candidates': str(output_dir / "eroded_candidates.nii.gz")
+        }
+
+    # Return arrays when not saving
     return {
         't1': t1_norm,
         'flair': flair_norm,
