@@ -1,6 +1,8 @@
-__pycache__/
 /models/*.pt
 
 *.nii
 *.nii.gz
 *.dcm
+
+__pycache__/
+*.egg-info

@@ -15,9 +15,9 @@ def normalize_image(
     ref_nii = None
     if isinstance(image, (str, Path)):
         ref_nii = nib.load(str(image))
-        data = ref_nii.get_fdata()
+        data = ref_nii.get_fdata(dtype=np.float32)
     else:
-        data = np.asarray(image)
+        data = np.asarray(image, dtype=np.float32)
 
     # Check if already normalized (use abs to include negative values)
     check_mask = (np.abs(data) > 1e-6)

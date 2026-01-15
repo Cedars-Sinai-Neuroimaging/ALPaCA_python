@@ -1,4 +1,5 @@
-# ALPaCA Python Port
+# ALPaCA Python (Automated Segmentation of MS Lesions, PRLS, CVS)
+
 
 Python implementation of the [ALPaCA](https://github.com/hufengling/ALPaCA) R package for MS lesion segmentation (Hu et al., 2025, *Imaging Neuroscience*). 
 
@@ -28,6 +29,7 @@ alpaca-download-models
   - uncertainties.csv - Uncertainty estimates per lesion
   - model_disagreement.csv - Disagreement between models per lesion
 
+---
 **Command Line**
 
 ```bash
@@ -57,5 +59,3 @@ results = run_alpaca(
     output_dir='results/'
 )
 ```
-
-MIT License
