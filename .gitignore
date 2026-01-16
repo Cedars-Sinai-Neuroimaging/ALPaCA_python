@@ -1,4 +1,4 @@
-/models/*.pt
+/src/alpaca/models/
 
 *.nii
 *.nii.gz

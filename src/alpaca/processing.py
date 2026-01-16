@@ -1,13 +1,76 @@
-"""High-level preprocessing pipelines."""
+
 
 import numpy as np
 import nibabel as nib
 from pathlib import Path
 from typing import Union, Optional, Dict
+from scipy.ndimage import binary_erosion
 
-from .normalize import normalize_image
-from .erode import erode_labels
+def normalize_image(
+    image: Union[str, np.ndarray],
+    mask: np.ndarray,
+    output_path: Optional[str] = None
+) -> np.ndarray:
+    """Z-score normalize an MRI image and mask."""
 
+    ref_nii = None
+    if isinstance(image, (str, Path)):
+        ref_nii = nib.load(str(image))
+        data = ref_nii.get_fdata(dtype=np.float32)
+    else:
+        data = np.asarray(image, dtype=np.float32)
+
+    # Calculate stats using the boolean mask
+    mean = data[mask].mean()
+    std = data[mask].std()
+
+    # Normalize
+    normalized = np.zeros_like(data)
+    if std > 1e-9:
+        normalized[mask] = (data[mask] - mean) / std
+
+    # Save if requested
+    if output_path:
+        Path(output_path).parent.mkdir(parents=True, exist_ok=True)
+        affine = ref_nii.affine if ref_nii else np.eye(4)
+        header = ref_nii.header if ref_nii else None
+        nib.save(nib.Nifti1Image(normalized, affine, header), output_path)
+
+    return normalized
+
+def erode_labels(
+    labels: Union[str, np.ndarray],
+    iterations: int = 1,
+    output_path: Optional[str] = None
+) -> np.ndarray:
+    """Erode each lesion label independently."""
+
+    # Load if path
+    ref_nii = None
+    if isinstance(labels, (str, Path)):
+        ref_nii = nib.load(str(labels))
+        label_data = ref_nii.get_fdata().astype(np.int32)
+    else:
+        label_data = np.asarray(labels, dtype=np.int32)
+
+    # Erode each lesion independently
+    eroded = np.zeros_like(label_data)
+    for label_id in np.unique(label_data):
+        if label_id == 0:
+            continue
+
+        mask = (label_data == label_id)
+        eroded_mask = binary_erosion(mask, iterations=iterations)
+        eroded[eroded_mask] = label_id
+
+    # Save if requested
+    if output_path:
+        Path(output_path).parent.mkdir(parents=True, exist_ok=True)
+        affine = ref_nii.affine if ref_nii else np.eye(4)
+        header = ref_nii.header if ref_nii else None
+        nib.save(nib.Nifti1Image(eroded.astype(np.int16), affine, header), output_path)
+
+    return eroded.astype(np.int16)
 
 def preprocess(
     t1: Union[str, np.ndarray],
@@ -45,10 +108,18 @@ def preprocess(
     if verbose:
         print("Normalizing images...")
 
-    t1_norm = normalize_image(t1)
-    flair_norm = normalize_image(flair)
-    epi_norm = normalize_image(epi)
-    phase_norm = normalize_image(phase)
+    if isinstance(t1, (str, Path)):
+        t1_data = nib.load(str(t1)).get_fdata()
+    else:
+        t1_data = np.asarray(t1)
+
+    # Use the mask from T1
+    mask = t1_data > 0
+
+    t1_norm = normalize_image(t1, mask)
+    flair_norm = normalize_image(flair, mask)
+    epi_norm = normalize_image(epi, mask)
+    phase_norm = normalize_image(phase, mask)
 
     # Load labels as array
     if isinstance(labeled_candidates, (str, Path)):
@@ -111,7 +182,6 @@ def preprocess(
         'eroded_candidates': eroded
     }
 
-
 def run_alpaca(
     t1: Union[str, np.ndarray],
     flair: Union[str, np.ndarray],
@@ -150,7 +220,7 @@ def run_alpaca(
         ...     n_models=10
         ... )
     """
-    from ..models.make_predictions import make_predictions
+    from .inference import make_predictions
 
     # Preprocess
     preprocessed = preprocess(

@@ -1,6 +1,6 @@
 
 """
-make_predictions.py
+inference.py
 
 ALPaCA inference pipeline.
 Predicts MS lesions, paramagnetic rim lesions (PRLs), and central vein sign (CVS).
@@ -15,7 +15,7 @@ import pandas as pd
 from pathlib import Path
 from typing import Dict, Union, Optional
 
-from ..utils.extract_patch import extract_patch
+from .utils import extract_patch
 
 
 # Constants
@@ -25,7 +25,7 @@ N_PATCHES_PER_LESION = 20
 N_CV_MODELS = 10
 N_CONTRASTS = 4      # [T1, FLAIR, Phase, EPI]
 N_BIOMARKERS = 3     # [lesion_prob, prl_prob, cvs_prob]
-LESIONS_PER_BATCH = 50 
+LESIONS_PER_BATCH = 20 
 
 
 # Probability thresholds for binary classification (Youden's J from training ROC)
@@ -108,6 +108,7 @@ def make_predictions(
     n_models: int = N_CV_MODELS,
     clear_discordant: bool = True,
     rotate_patches: bool = True,
+    batch_size: int = LESIONS_PER_BATCH,
 
     # Optional outputs
     return_probabilities: bool = False,
@@ -132,6 +133,7 @@ def make_predictions(
         n_models: Number of CV models to use (1-10)
         clear_discordant: Clear PRL/CVS predictions when Lesion=0
         rotate_patches: Apply random rotations for test-time augmentation
+        batch_size: Number of patches per inference batch
         return_probabilities: Return full probability maps
         save_outputs: Save results to disk
         random_seed: Seed for reproducibility
@@ -150,9 +152,18 @@ def make_predictions(
         print("\n┌" + "─"*38 + "┐")
         print("│" + " Lesion Inference ".center(38) + "│")
         print("└" + "─"*38 + "┘")   
-    
+
+    if torch.backends.mps.is_available():
+        device = torch.device("mps")
+    elif torch.cuda.is_available():
+        device = torch.device("cuda")
+    else:
+        device = torch.device("cpu")
+
+    if verbose:
+        print(f" - Device {device} selected")
     if model_dir is None:
-        model_dir = Path(__file__).parent.parent.parent / "models"
+        model_dir = Path(__file__).parent / "models"
 
     if random_seed is not None:
         np.random.seed(random_seed)
@@ -160,7 +171,7 @@ def make_predictions(
         if torch.cuda.is_available():
             torch.cuda.manual_seed_all(random_seed)
         if verbose:
-            print(f"Random seed set to: {random_seed}")
+            print(f" - Random seed set to: {random_seed}")
 
     # ========== [STAGE 1] LOAD AND VALIDATE INPUT ========== #
     if verbose:
@@ -207,10 +218,12 @@ def make_predictions(
     )
 
     n_lesions = int(labeled_candidates.max())
-    if n_lesions == 0:
-        if verbose:
+    if verbose:
+        if n_lesions == 0:
             print("No lesion candidates detected.")
-        return None
+            return None
+        else:
+            print(f" - Found {n_lesions} lesion candidates")
 
     # ========== [STAGE 2] LOAD MODELS ========== #
     if verbose:
@@ -224,8 +237,6 @@ def make_predictions(
     models_list = []
 
     for i in range(1, n_models + 1):
-        device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-        
 
         autoencoder_path = model_dir / f"autoencoder_{i}.pt"
         predictor_path = model_dir / f"predictor_{i}.pt"
@@ -257,14 +268,14 @@ def make_predictions(
     all_model_disagreement = np.zeros((n_lesions, N_BIOMARKERS))  # Track ensemble disagreement
 
     n_skipped = 0
-    n_batches = (n_lesions + LESIONS_PER_BATCH - 1) // LESIONS_PER_BATCH 
+    n_batches = (n_lesions + batch_size - 1) // batch_size 
 
     # Process lesions in batches
-    for batch_num, batch_start in enumerate(range(1, n_lesions + 1, LESIONS_PER_BATCH), 1):
+    for batch_num, batch_start in enumerate(range(1, n_lesions + 1, batch_size), 1):
         if verbose:
-            print(f"  Batch {batch_num}/{n_batches}: Lesions {batch_start}-{min(batch_start + LESIONS_PER_BATCH - 1, n_lesions)}")
+            print(f" - Batch {batch_num}/{n_batches}: Lesions {batch_start}-{min(batch_start + batch_size - 1, n_lesions)}")
 
-        batch_end = min(batch_start + LESIONS_PER_BATCH, n_lesions + 1)
+        batch_end = min(batch_start + batch_size, n_lesions + 1)
         batch_lesion_ids = range(batch_start, batch_end)
         
         # Extract patches for this batch
@@ -359,9 +370,11 @@ def make_predictions(
         del batch_patches, batch_model_predictions
         if torch.cuda.is_available():
             torch.cuda.empty_cache()
+        elif torch.backends.mps.is_available():
+            torch.mps.empty_cache()
     
     if verbose and n_skipped > 0:
-                print(f"  Skipped {n_skipped} lesions (too small or near boundary)")
+                print(f" - Skipped {n_skipped} lesions (too small or near boundary)")
 
     # ========== [STAGE 4] THRESHOLD TO BINARY PREDICTIONS ========== #
     if verbose:
@@ -383,9 +396,9 @@ def make_predictions(
         binary_cvs = binary_cvs * binary_lesion
 
         if verbose and (n_discordant_prl > 0 or n_discordant_cvs > 0):
-            print(f"  NOTE: Cleared {n_discordant_prl} discordant PRL, {n_discordant_cvs} discordant CVS predictions")
+            print(f" - Cleared {n_discordant_prl} discordant PRL, {n_discordant_cvs} discordant CVS predictions")
 
-    # ========== [STAGE 6] CREATE OUTPUT MASKS ========== #
+    # ========== [STAGE 5] CREATE OUTPUT MASKS ========== #
     if verbose:
         print(f"[5/5] Creating output masks")
 
@@ -456,7 +469,7 @@ def make_predictions(
             header = ref_img.header
         else:
             if verbose:
-                print("  WARNING: No reference image - output will use identity affine")
+                print(" - No reference image - output will use identity affine")
             affine = np.eye(4)
             header = None
 
@@ -502,45 +515,3 @@ def make_predictions(
     return results
 
 
-if __name__ == "__main__":
-    import argparse
-
-    parser = argparse.ArgumentParser(description='Run ALPaCA inference')
-    parser.add_argument('--t1', required=True, help='Path to T1 image')
-    parser.add_argument('--flair', required=True, help='Path to FLAIR image')
-    parser.add_argument('--epi', required=True, help='Path to EPI magnitude image')
-    parser.add_argument('--phase', required=True, help='Path to EPI phase image')
-    parser.add_argument('--labeled-candidates', required=True, help='Path to labeled candidates')
-    parser.add_argument('--eroded-candidates', required=True, help='Path to eroded candidates')
-    parser.add_argument('--model-dir', required=True, help='Directory with model weights')
-    parser.add_argument('--output-dir', required=True, help='Output directory')
-    parser.add_argument('--lesion-priority', default='youdens_j',
-                       choices=['youdens_j', 'specificity', 'sensitivity'])
-    parser.add_argument('--prl-priority', default='youdens_j',
-                       choices=['youdens_j', 'specificity', 'sensitivity'])
-    parser.add_argument('--cvs-priority', default='youdens_j',
-                       choices=['youdens_j', 'specificity', 'sensitivity'])
-    parser.add_argument('--n-patches', type=int, default=20)
-    parser.add_argument('--n-models', type=int, default=10)
-    parser.add_argument('--rotate-patches', action='store_true')
-    parser.add_argument('--return-probabilities', action='store_true')
-
-    args = parser.parse_args()
-
-    results = make_predictions(
-        t1=args.t1,
-        flair=args.flair,
-        epi=args.epi,
-        phase=args.phase,
-        labeled_candidates=args.labeled_candidates,
-        eroded_candidates=args.eroded_candidates,
-        model_dir=args.model_dir,
-        output_dir=args.output_dir,
-        lesion_priority=args.lesion_priority,
-        prl_priority=args.prl_priority,
-        cvs_priority=args.cvs_priority,
-        n_patches=args.n_patches,
-        n_models=args.n_models,
-        rotate_patches=args.rotate_patches,
-        return_probabilities=args.return_probabilities
-    )

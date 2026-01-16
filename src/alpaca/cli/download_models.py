@@ -24,7 +24,7 @@ def download_models(output_dir=None):
 
     if output_dir is None:
         # Default: models/ in package root
-        output_dir = Path(__file__).parent.parent.parent / "models"
+        output_dir = Path(__file__).parent.parent / "models"
     else:
         output_dir = Path(output_dir)
 

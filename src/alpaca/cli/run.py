@@ -109,6 +109,8 @@ Examples:
                                  help='Patches per lesion (default: 20)')
     inference_group.add_argument('--n-models', type=int, default=10, metavar='N',
                                  help='CV models to use (default: 10)')
+    inference_group.add_argument('--batch-size', type=int, default=20, metavar='N',
+                                 help='Patches per batch (default: 20)')
     inference_group.add_argument('--no-rotate', action='store_true',
                                  help='Disable patch rotation')
     inference_group.add_argument('--seed', type=int, metavar='N',
@@ -196,8 +198,8 @@ Examples:
 
     # Run ALPaCA pipeline
     try:
-        from ..preprocessing.pipeline import preprocess
-        from ..models.make_predictions import make_predictions
+        from ..processing import preprocess
+        from ..inference import make_predictions
 
         preprocessed = preprocess(
                 t1=t1_path,
