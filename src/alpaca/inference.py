@@ -16,6 +16,7 @@ from pathlib import Path
 from typing import Dict, Union, Optional
 
 from .utils import extract_patch
+from .logger import log
 
 
 # Constants
@@ -113,9 +114,7 @@ def make_predictions(
     # Optional outputs
     return_probabilities: bool = False,
     save_outputs: bool = True,
-    random_seed: Optional[int] = None,
-    verbose: bool = True
-
+    random_seed: Optional[int] = None
 ) -> Dict:
     """
     Run ALPaCA inference to predict Lesion, PRL, and CVS status.
@@ -137,21 +136,9 @@ def make_predictions(
         return_probabilities: Return full probability maps
         save_outputs: Save results to disk
         random_seed: Seed for reproducibility
-        verbose: Print progress
-
-    Returns:
-        Dictionary containing:
-            - 'mask': Combined segmentation mask (0=background, 1=lesion, 3=lesion+PRL, etc.)
-            - 'predictions': DataFrame with per-lesion binary predictions
-            - 'probabilities': DataFrame with per-lesion probabilities
-            - 'uncertainties': DataFrame with per-lesion standard deviations
-            - Optional: 'probability_maps' if return_probabilities=True
     """
 
-    if verbose:
-        print("\n┌" + "─"*38 + "┐")
-        print("│" + " Lesion Inference ".center(38) + "│")
-        print("└" + "─"*38 + "┘")   
+    log.info("Starting inference...")
 
     if torch.backends.mps.is_available():
         device = torch.device("mps")
@@ -160,8 +147,7 @@ def make_predictions(
     else:
         device = torch.device("cpu")
 
-    if verbose:
-        print(f" - Device {device} selected")
+    log.debug(f"  - Using device: {device}")
     if model_dir is None:
         model_dir = Path(__file__).parent / "models"
 
@@ -170,12 +156,10 @@ def make_predictions(
         torch.manual_seed(random_seed)
         if torch.cuda.is_available():
             torch.cuda.manual_seed_all(random_seed)
-        if verbose:
-            print(f" - Random seed set to: {random_seed}")
+        log.debug(f"  - Random seed: {random_seed}")
 
     # ========== [STAGE 1] LOAD AND VALIDATE INPUT ========== #
-    if verbose:
-        print("[1/5] Loading inputs")
+    log.info("[bold]1/5[/bold] Loading inputs...")
 
     # Validate inputs provided
     if any(x is None for x in [t1, flair, epi, phase, labeled_candidates, eroded_candidates]):
@@ -198,17 +182,18 @@ def make_predictions(
 
     # Load images if paths provided
     ref_img = None  # Store reference for metadata preservation
+    if isinstance(labeled_candidates, str):
+        ref_img = nib.load(labeled_candidates)
+        labeled_candidates = ref_img.get_fdata().astype(np.int32)
+        
     if isinstance(t1, str):
-        ref_img = nib.load(t1)  # Save reference for affine/header
-        t1 = ref_img.get_fdata()
+        t1 = load_nifti(t1)
     if isinstance(flair, str):
         flair = load_nifti(flair)
     if isinstance(epi, str):
         epi = load_nifti(epi)
     if isinstance(phase, str):
         phase = load_nifti(phase)
-    if isinstance(labeled_candidates, str):
-        labeled_candidates = load_nifti(labeled_candidates).astype(np.int32)
     if isinstance(eroded_candidates, str):
         eroded_candidates = load_nifti(eroded_candidates).astype(np.int32)
 
@@ -218,16 +203,14 @@ def make_predictions(
     )
 
     n_lesions = int(labeled_candidates.max())
-    if verbose:
-        if n_lesions == 0:
-            print("No lesion candidates detected.")
-            return None
-        else:
-            print(f" - Found {n_lesions} lesion candidates")
+    if n_lesions == 0:
+        log.warning("  - No lesion candidates detected.")
+        return None
+    else:
+        log.debug(f"  - Found {n_lesions} lesion candidates.")
 
     # ========== [STAGE 2] LOAD MODELS ========== #
-    if verbose:
-        print(f"[2/5] Loading models")
+    log.info("[bold]2/5[/bold] Loading models...")
 
     model_dir = Path(model_dir)
 
@@ -259,10 +242,8 @@ def make_predictions(
         models_list.append({'encoder': encoder, 'predictor': predictor})
 
 
-   # ========== [STAGE 3] BATCH AND INFER ========== #
-    if verbose:
-        print(f"[3/5] Running inference")
-
+    # ========== [STAGE 3] BATCH AND INFER ========== #
+    log.info("[bold]3/5[/bold] Running inference...")
     all_predictions = np.zeros((n_lesions, N_BIOMARKERS)) 
     all_uncertainties = np.zeros((n_lesions, N_BIOMARKERS))
     all_model_disagreement = np.zeros((n_lesions, N_BIOMARKERS))  # Track ensemble disagreement
@@ -272,8 +253,7 @@ def make_predictions(
 
     # Process lesions in batches
     for batch_num, batch_start in enumerate(range(1, n_lesions + 1, batch_size), 1):
-        if verbose:
-            print(f" - Batch {batch_num}/{n_batches}: Lesions {batch_start}-{min(batch_start + batch_size - 1, n_lesions)}")
+        log.debug(f"  - Batch {batch_num}/{n_batches}: Lesions {batch_start}-{min(batch_start + batch_size - 1, n_lesions)}")
 
         batch_end = min(batch_start + batch_size, n_lesions + 1)
         batch_lesion_ids = range(batch_start, batch_end)
@@ -283,6 +263,7 @@ def make_predictions(
         batch_lesion_to_patch_idx = []
         current_idx = 0
 
+        log.debug(f"    - Creating {n_patches} patches per lesion...")
         for candidate_id in batch_lesion_ids:
             # Find valid patch centers (not on image boundaries)
             valid_coords = get_valid_patch_centers(labeled_candidates, candidate_id)
@@ -292,6 +273,7 @@ def make_predictions(
             if n_valid == 0: 
                 batch_lesion_to_patch_idx.append((current_idx, current_idx))
                 n_skipped += 1
+                log.warning(f"    - Lesion {candidate_id}: skipped (no valid centers).")
                 continue
             
             # Sample patch centers (allow replacement if necessary)
@@ -327,12 +309,14 @@ def make_predictions(
             continue
 
         # Convert to tensor
+        log.debug(f"    - Moving {len(batch_patches_list)} patches to device...")
         batch_patches = torch.stack(batch_patches_list).to(device)
 
         # Run inference
+        log.debug(f"    - Running {n_models} models...")
         batch_model_predictions = []
         with torch.no_grad():
-            for model in models_list:
+            for i, model in enumerate(models_list):
                 encoder = model['encoder']
                 predictor = model['predictor']
                 
@@ -373,16 +357,18 @@ def make_predictions(
         elif torch.backends.mps.is_available():
             torch.mps.empty_cache()
     
-    if verbose and n_skipped > 0:
-                print(f" - Skipped {n_skipped} lesions (too small or near boundary)")
+    if n_skipped > 0:
+        log.warning(f"  - Skipped {n_skipped} total lesions (too small or near boundary).")
+
+    log.debug("    [green]✓[/green] Batch complete.")
 
     # ========== [STAGE 4] THRESHOLD TO BINARY PREDICTIONS ========== #
-    if verbose:
-        print(f"[4/5] Applying thresholds")
+    log.info("[bold]4/5[/bold] Applying thresholds...")
 
     lesion_thresh = THRESHOLDS['lesion'][lesion_priority]
     prl_thresh = THRESHOLDS['prl'][prl_priority]
     cvs_thresh = THRESHOLDS['cvs'][cvs_priority]
+    log.debug(f"  - Thresholds: Lesion={lesion_priority}, PRL={prl_priority}, CVS={cvs_priority}")
 
     binary_lesion = (all_predictions[:, 0] > lesion_thresh).astype(int)
     binary_prl = (all_predictions[:, 1] > prl_thresh).astype(int)
@@ -395,12 +381,11 @@ def make_predictions(
         binary_prl = binary_prl * binary_lesion
         binary_cvs = binary_cvs * binary_lesion
 
-        if verbose and (n_discordant_prl > 0 or n_discordant_cvs > 0):
-            print(f" - Cleared {n_discordant_prl} discordant PRL, {n_discordant_cvs} discordant CVS predictions")
+        if n_discordant_prl > 0 or n_discordant_cvs > 0:
+            log.info(f"  - Cleared {n_discordant_prl} discordant PRL and {n_discordant_cvs} discordant CVS predictions.")
 
     # ========== [STAGE 5] CREATE OUTPUT MASKS ========== #
-    if verbose:
-        print(f"[5/5] Creating output masks")
+    log.info("[bold]5/5[/bold] Creating output masks...")
 
     # Clever encoding
     lesion_codes = binary_lesion * 1 + binary_prl * 2 + binary_cvs * 4 
@@ -468,8 +453,7 @@ def make_predictions(
             affine = ref_img.affine
             header = ref_img.header
         else:
-            if verbose:
-                print(" - No reference image - output will use identity affine")
+            log.warning("  - No reference image - output will use identity affine.")
             affine = np.eye(4)
             header = None
 
@@ -486,19 +470,7 @@ def make_predictions(
                 prob_nii = nib.Nifti1Image(prob_map, affine=affine, header=header)
                 nib.save(prob_nii, output_dir / f'{name}_prob.nii.gz')
 
-        if verbose:
-            print(f"[Done] Results saved to {output_dir}")
-
-        if verbose:
-            print("\n┌" + "─"*38 + "┐")
-            print("│" + " Summary ".center(38) + "│")
-            print("└" + "─"*38 + "┘")   
-            print(f"Total Lesions       : {predictions_df['lesion'].sum()}")
-            print(f"Lesions only        : {np.sum(lesion_codes == 1)}")
-            print(f"Lesions + PRL       : {np.sum(lesion_codes == 3)}")
-            print(f"Lesions + CVS       : {np.sum(lesion_codes == 5)}")
-            print(f"Lesions + PRL + CVS : {np.sum(lesion_codes == 7)}")
-            print(f"")
+        log.info(f"Results saved to {output_dir.absolute()}")
 
     # Return results
     results = {

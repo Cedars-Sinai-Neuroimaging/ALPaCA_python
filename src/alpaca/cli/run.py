@@ -22,11 +22,8 @@ Two modes:
 import argparse
 import sys
 from pathlib import Path
-import warnings
 
-warnings.filterwarnings('ignore', category=UserWarning, message='Can\'t initialize NVML')
-
-
+from ..logger import log, set_log_level
 
 def find_file(directory, patterns):
     """Find first file matching any of the patterns."""
@@ -41,6 +38,7 @@ def find_file(directory, patterns):
 def auto_detect_files(subject_dir):
     """Auto-detect MRI files from subject directory."""
     subject_dir = Path(subject_dir)
+    log.info(f"Auto-detecting files from: '{subject_dir}'...")
 
     patterns = {
         't1': ['*_T1_MTTE.nii.gz', 'T1_MTTE.nii.gz', 't1.nii.gz', 'T1.nii.gz', 't1_final.nii.gz'],
@@ -61,6 +59,7 @@ def auto_detect_files(subject_dir):
         found = find_file(subject_dir, pattern_list)
         if found:
             files[key] = found
+            log.debug(f"  - Found {key:<7}: {Path(found).name}")
 
     return files
 
@@ -131,31 +130,35 @@ Examples:
                                  help='CVS threshold (default: youdens_j)')
 
     # Other
-    parser.add_argument('--verbose', action='store_true',
-                        help='Print progress')
+    log_group = parser.add_argument_group('Logging')
+    verbosity = log_group.add_mutually_exclusive_group()
+    verbosity.add_argument('-q', '--quiet', action='store_true', help="Show only critical errors")
+    verbosity.add_argument('-v', '--verbose', action='store_true', help="Show all debug messages")
+    parser.add_argument('--skip-normalization', action='store_true',
+                        help='Skip image normalization step')
 
     args = parser.parse_args()
 
+    # Configure logging
+    if args.quiet:
+        set_log_level("quiet")
+    elif args.verbose:
+        set_log_level("verbose")
+    else:
+        set_log_level("standard")
+
     # Determine mode and get file paths
     if args.subject_dir:
-        if args.verbose:
-            print(f"Auto-detecting files from: {args.subject_dir}")
-
         files = auto_detect_files(args.subject_dir)
 
         required = ['t1', 'flair', 'epi', 'phase', 'labels']
         missing = [k for k in required if k not in files]
 
         if missing:
-            print(f"Error: Could not auto-detect: {missing}")
-            print(f"Searched in: {args.subject_dir}")
-            print("Use explicit mode: --t1, --flair, --epi, --phase, --labels")
+            log.error(f"Could not auto-detect: {missing}")
+            log.error(f"Searched in: {args.subject_dir}")
+            log.error("Use explicit mode: --t1, --flair, --epi, --phase, --labels")
             return 1
-
-        if args.verbose:
-            for key in required + ['eroded']:
-                if key in files:
-                    print(f"  {key:8s}: {Path(files[key]).name}")
 
         t1_path = files['t1']
         flair_path = files['flair']
@@ -170,7 +173,7 @@ Examples:
         missing = [arg for arg in required_args if getattr(args, arg) is None]
 
         if missing:
-            print(f"Error: Missing required arguments: --{', --'.join(missing)}")
+            log.error(f"Missing required arguments: --{', --'.join(missing)}")
             return 1
 
         t1_path = args.t1
@@ -185,35 +188,29 @@ Examples:
                        ('epi', epi_path), ('phase', phase_path),
                        ('labels', labels_path)]:
         if not Path(path).exists():
-            print(f"Error: {name} file not found: {path}")
+            log.error(f"{name} file not found: {path}")
             return 1
 
     if eroded_path and not Path(eroded_path).exists():
-        print(f"Error: eroded-labels file not found: {eroded_path}")
+        log.error(f"eroded-labels file not found: {eroded_path}")
         return 1
 
     if args.model_dir and not Path(args.model_dir).exists():
-        print(f"Error: Model directory not found: {args.model_dir}")
+        log.error(f"Model directory not found: {args.model_dir}")
         return 1
 
     # Run ALPaCA pipeline
     try:
-        from ..processing import preprocess
-        from ..inference import make_predictions
+        from ..processing import run_alpaca
 
-        preprocessed = preprocess(
+        results = run_alpaca(
                 t1=t1_path,
                 flair=flair_path,
                 epi=epi_path,
                 phase=phase_path,
                 labeled_candidates=labels_path,
                 eroded_candidates=eroded_path,
-                output_dir=str(Path(args.output) / "preprocessed"),
-                verbose=args.verbose
-        )
-
-        results = make_predictions(
-                **preprocessed,
+                skip_normalization=args.skip_normalization,
                 model_dir=args.model_dir,
                 output_dir=args.output,
                 lesion_priority=args.lesion_threshold,
@@ -223,21 +220,19 @@ Examples:
                 n_models=args.n_models,
                 rotate_patches=not args.no_rotate,
                 return_probabilities=args.return_prob_maps,
-                random_seed=args.seed,
-                verbose=args.verbose
+                random_seed=args.seed
         )
 
-        if not args.verbose:
-            print(f"\nPipeline completed successfully")
-            print(f"Results saved to: {args.output}")
+        if results:
+            log.info(f"\n[bold green]Pipeline completed successfully.[/bold green]")
+        else:
+            log.warning("\nPipeline finished, but no lesions were processed.")
 
         return 0
 
     except Exception as e:
-        print(f"Error: {e}")
-        if args.verbose:
-            import traceback
-            traceback.print_exc()
+        log.error(f"An unexpected error occurred: {e}")
+        log.debug(e, exc_info=True) # Full traceback on verbose
         return 1
 
 

@@ -6,12 +6,15 @@ from pathlib import Path
 from typing import Union, Optional, Dict
 from scipy.ndimage import binary_erosion
 
-def normalize_image(
+from .logger import log
+
+
+def _normalize_image(
     image: Union[str, np.ndarray],
     mask: np.ndarray,
     output_path: Optional[str] = None
 ) -> np.ndarray:
-    """Z-score normalize an MRI image and mask."""
+    """Z-score normalize an MRI image with a mask."""
 
     ref_nii = None
     if isinstance(image, (str, Path)):
@@ -37,13 +40,15 @@ def normalize_image(
         nib.save(nib.Nifti1Image(normalized, affine, header), output_path)
 
     return normalized
-
+    
 def erode_labels(
     labels: Union[str, np.ndarray],
     iterations: int = 1,
     output_path: Optional[str] = None
 ) -> np.ndarray:
     """Erode each lesion label independently."""
+
+    log.info("Eroding lesion candidates...")
 
     # Load if path
     ref_nii = None
@@ -55,10 +60,12 @@ def erode_labels(
 
     # Erode each lesion independently
     eroded = np.zeros_like(label_data)
-    for label_id in np.unique(label_data):
+    unique_labels = np.unique(label_data)
+    log.debug(f"  - Eroding {len(unique_labels) - 1} labels...")
+    for label_id in unique_labels:
         if label_id == 0:
             continue
-
+        
         mask = (label_data == label_id)
         eroded_mask = binary_erosion(mask, iterations=iterations)
         eroded[eroded_mask] = label_id
@@ -69,75 +76,36 @@ def erode_labels(
         affine = ref_nii.affine if ref_nii else np.eye(4)
         header = ref_nii.header if ref_nii else None
         nib.save(nib.Nifti1Image(eroded.astype(np.int16), affine, header), output_path)
+        log.debug(f"  - Saved eroded labels to {output_path}")
 
+    log.debug("  [green]✓[/green] Erosion complete.")
     return eroded.astype(np.int16)
 
-def preprocess(
+def normalize_images(
     t1: Union[str, np.ndarray],
     flair: Union[str, np.ndarray],
     epi: Union[str, np.ndarray],
     phase: Union[str, np.ndarray],
-    labeled_candidates: Union[str, np.ndarray],
-    eroded_candidates: Optional[Union[str, np.ndarray]] = None,
     output_dir: Optional[str] = None,
-    verbose: Optional[bool] = False
 ) -> Dict[str, np.ndarray]:
 
-    """
-    Preprocess images for ALPaCA inference.
+    log.info("Normalizing images...")
 
-    Normalizes the 4 MRI modalities and erodes lesion labels.
-    Output dict can be unpacked directly into make_predictions().
-
-    Args:
-        t1, flair, epi, phase: MRI images (paths or arrays)
-        labeled_candidates: Lesion labels (paths or arrays)
-        eroded_candidates: Pre-eroded labels (optional, skips erosion if provided)
-        output_dir: Optional directory to save preprocessed files
-        verbose: Verbose output
-
-    Returns:
-        Dict with keys: t1, flair, epi, phase, labeled_candidates, eroded_candidates
-
-    Example:
-        >>> preprocessed = preprocess(t1, flair, epi, phase, labels)
-        >>> results = make_predictions(**preprocessed, model_dir='models/')
-    """
-
-    # Normalize modalities
-    if verbose:
-        print("Normalizing images...")
-
+    # Use the mask from T1
     if isinstance(t1, (str, Path)):
+        log.debug("  - Loading T1 from path to create mask...")
         t1_data = nib.load(str(t1)).get_fdata()
     else:
         t1_data = np.asarray(t1)
 
-    # Use the mask from T1
     mask = t1_data > 0
 
-    t1_norm = normalize_image(t1, mask)
-    flair_norm = normalize_image(flair, mask)
-    epi_norm = normalize_image(epi, mask)
-    phase_norm = normalize_image(phase, mask)
-
-    # Load labels as array
-    if isinstance(labeled_candidates, (str, Path)):
-        labels_array = nib.load(str(labeled_candidates)).get_fdata().astype(np.int32)
-    else:
-        labels_array = np.asarray(labeled_candidates, dtype=np.int32)
-
-    # Erode if not provided
-    if eroded_candidates is None:
-        if verbose:
-            print("Eroding lesions...")
-        eroded = erode_labels(labels_array)
-    else:
-        if isinstance(eroded_candidates, (str, Path)):
-            eroded = nib.load(str(eroded_candidates)).get_fdata().astype(np.int16)
-        else:
-            eroded = np.asarray(eroded_candidates, dtype=np.int16)
-
+    log.debug("  - Normalizing T1, FLAIR, EPI, and Phase images...")
+    t1_norm = _normalize_image(t1, mask)
+    flair_norm = _normalize_image(flair, mask)
+    epi_norm = _normalize_image(epi, mask)
+    phase_norm = _normalize_image(phase, mask)
+    
     # Optionally save
     if output_dir:
         output_dir = Path(output_dir)
@@ -156,31 +124,19 @@ def preprocess(
         nib.save(nib.Nifti1Image(flair_norm, affine, header), output_dir / "flair_norm.nii.gz")
         nib.save(nib.Nifti1Image(epi_norm, affine, header), output_dir / "epi_norm.nii.gz")
         nib.save(nib.Nifti1Image(phase_norm, affine, header), output_dir / "phase_norm.nii.gz")
-        nib.save(nib.Nifti1Image(labels_array, affine, header), output_dir / "labeled_candidates.nii.gz")
-        nib.save(nib.Nifti1Image(eroded, affine, header), output_dir / "eroded_candidates.nii.gz")
 
-        if verbose:
-            print(f"Saved processed images to {output_dir}")
-
-        # Return file paths when saving (matches old behavior)
-        return {
-            't1': str(output_dir / "t1_norm.nii.gz"),
-            'flair': str(output_dir / "flair_norm.nii.gz"),
-            'epi': str(output_dir / "epi_norm.nii.gz"),
-            'phase': str(output_dir / "phase_norm.nii.gz"),
-            'labeled_candidates': str(output_dir / "labeled_candidates.nii.gz"),
-            'eroded_candidates': str(output_dir / "eroded_candidates.nii.gz")
-        }
+    log.debug("  [green]✓[/green] Normalization complete.")
 
     # Return arrays when not saving
     return {
         't1': t1_norm,
         'flair': flair_norm,
         'epi': epi_norm,
-        'phase': phase_norm,
-        'labeled_candidates': labels_array,
-        'eroded_candidates': eroded
+        'phase': phase_norm
     }
+
+from .inference import make_predictions
+
 
 def run_alpaca(
     t1: Union[str, np.ndarray],
@@ -189,8 +145,10 @@ def run_alpaca(
     phase: Union[str, np.ndarray],
     labeled_candidates: Union[str, np.ndarray],
     eroded_candidates: Optional[Union[str, np.ndarray]] = None,
+    skip_normalization: Optional[bool] = False,
     model_dir: Optional[str] = None,
     output_dir: Optional[str] = None,
+    
     **inference_kwargs
 ) -> Dict:
     """
@@ -200,6 +158,7 @@ def run_alpaca(
         t1, flair, epi, phase: MRI images (paths or arrays)
         labeled_candidates: Lesion labels (paths or arrays)
         eroded_candidates: Pre-eroded labels (optional, skips erosion if provided)
+        skip_normalization: Skip normalization step
         model_dir: Directory containing model weights
         output_dir: Where to save results
         **inference_kwargs: Additional arguments passed to make_predictions()
@@ -217,25 +176,51 @@ def run_alpaca(
         ...     labeled_candidates='labels.nii.gz',
         ...     model_dir='models/',
         ...     output_dir='results/',
-        ...     n_models=10
+        ...     batch_size=20
         ... )
     """
-    from .inference import make_predictions
+    # Normalize
+    if not skip_normalization:
+        normalized = normalize_images(
+            t1=t1,
+            flair=flair,
+            epi=epi,
+            phase=phase
+        )
 
-    # Preprocess
-    preprocessed = preprocess(
-        t1=t1,
-        flair=flair,
-        epi=epi,
-        phase=phase,
-        labeled_candidates=labeled_candidates,
-        eroded_candidates=eroded_candidates
-    )
+    else:
+        log.info("[yellow]Skipping normalization.[/yellow]")
+        normalized = {
+            't1': t1,
+            'flair': flair,
+            'epi': epi,
+            'phase': phase
+        }
+
+    # Load labels as array
+    if isinstance(labeled_candidates, (str, Path)):
+        labels_array = nib.load(str(labeled_candidates)).get_fdata().astype(np.int32)
+    else:
+        labels_array = np.asarray(labeled_candidates, dtype=np.int32)
+
+    # Erode if not provided
+    if eroded_candidates is None:
+        eroded = erode_labels(labels_array)
+    else:
+        log.info("[yellow]Using pre-eroded labels.[/yellow]")
+        if isinstance(eroded_candidates, (str, Path)):
+            eroded = nib.load(str(eroded_candidates)).get_fdata().astype(np.int16)
+        else:
+            eroded = np.asarray(eroded_candidates, dtype=np.int16)
 
     # Run inference
-    return make_predictions(
-        **preprocessed,
+    results = make_predictions(
+        **normalized,
+        labeled_candidates=labeled_candidates,
+        eroded_candidates=eroded,
         model_dir=model_dir,
         output_dir=output_dir,
         **inference_kwargs
     )
+    
+    return results

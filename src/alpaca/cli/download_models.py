@@ -4,19 +4,15 @@
 import argparse
 import zipfile
 from pathlib import Path
-from urllib.request import urlretrieve
-from tqdm import tqdm
+from urllib.request import urlopen
+import shutil
+from rich.progress import Progress, BarColumn, TextColumn, DownloadColumn, TransferSpeedColumn, TimeRemainingColumn
+
+from ..logger import log, console
+
 
 ZENODO_URL = "https://zenodo.org/records/17215591/files/ALPaCA%20v1.0.0.zip?download=1"
 MODEL_PATH_IN_ZIP = "ALPaCA 2/inst/extdata/"
-
-
-class DownloadProgressBar(tqdm):
-    """Progress bar for urllib downloads."""
-    def update_to(self, b=1, bsize=1, tsize=None):
-        if tsize is not None:
-            self.total = tsize
-        self.update(b * bsize - self.n)
 
 
 def download_models(output_dir=None):
@@ -32,42 +28,67 @@ def download_models(output_dir=None):
     zip_path = output_dir / "alpaca_temp.zip"
 
     # Download
-    print(f"Downloading ALPaCA models from Zenodo (2.3 GB)...")
-    print(f"URL: {ZENODO_URL}")
+    log.info(f"Downloading ALPaCA models from Zenodo (2.3 GB)...")
+    log.info(f"URL: {ZENODO_URL}")
+
     try:
-        with DownloadProgressBar(unit='B', unit_scale=True, miniters=1, desc='Download') as t:
-            urlretrieve(ZENODO_URL, zip_path, reporthook=t.update_to)
+        with urlopen(ZENODO_URL) as response:
+            total_size = int(response.info().get('Content-Length', 0))
+            
+            with Progress(
+                TextColumn("[bold blue]{task.fields[filename]}", justify="right"),
+                BarColumn(bar_width=None),
+                "[progress.percentage]{task.percentage:>3.1f}%",
+                "•",
+                DownloadColumn(),
+                "•",
+                TransferSpeedColumn(),
+                "•",
+                TimeRemainingColumn(),
+                console=console # Use the shared console
+            ) as progress:
+                task = progress.add_task("Downloading", total=total_size, filename="ALPaCA models")
+                with open(zip_path, 'wb') as f:
+                    while True:
+                        chunk = response.read(16 * 1024)
+                        if not chunk:
+                            break
+                        f.write(chunk)
+                        progress.update(task, advance=len(chunk))
+
     except Exception as e:
-        print(f"Error downloading: {e}")
+        log.error(f"Error downloading: {e}")
         if zip_path.exists():
             zip_path.unlink()
         return False
 
     # Extract .pt files
-    print("Extracting model files...")
+    log.info("Extracting model files...")
+    pt_files_extracted = []
     try:
         with zipfile.ZipFile(zip_path, 'r') as zf:
             pt_files = [f for f in zf.namelist()
                        if f.startswith(MODEL_PATH_IN_ZIP) and f.endswith('.pt')]
 
             if not pt_files:
-                print("Error: No .pt files found in archive")
+                log.error("Error: No .pt files found in archive")
                 return False
 
             for file in pt_files:
                 filename = Path(file).name
-                print(f"  {filename}")
+                log.info(f"  - {filename}")
                 data = zf.read(file)
                 (output_dir / filename).write_bytes(data)
+                pt_files_extracted.append(filename)
     except Exception as e:
-        print(f"Error extracting: {e}")
+        log.error(f"Error extracting: {e}")
         return False
     finally:
         if zip_path.exists():
             zip_path.unlink()
 
-    print(f"\n✓ Downloaded {len(pt_files)} model files")
-    print(f"✓ Location: {output_dir.absolute()}")
+    log.info(f"\n[green]✓[/green] Downloaded {len(pt_files_extracted)} model files")
+    log.info(f"[green]✓[/green] Location: {output_dir.absolute()}")
     return True
 
 
