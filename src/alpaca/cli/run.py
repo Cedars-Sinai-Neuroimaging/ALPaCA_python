@@ -168,9 +168,9 @@ Examples:
         )
 
         if results:
-            log.info(f"\n[bold green]Pipeline completed successfully.[/bold green]")
+            log.info(f"[bold green]Pipeline completed successfully.[/bold green]")
         else:
-            log.warning("\nPipeline finished, but no lesions were processed.")
+            log.warning("Pipeline finished, but no lesions were processed.")
 
         return 0
 

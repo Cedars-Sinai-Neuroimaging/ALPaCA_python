@@ -384,6 +384,23 @@ def make_predictions(
         if n_discordant_prl > 0 or n_discordant_cvs > 0:
             log.debug(f"  - Cleared {n_discordant_prl} discordant PRL and {n_discordant_cvs} discordant CVS predictions.")
 
+    # Summary stats
+    n_lesions_classified = np.sum(binary_lesion)
+    if n_lesions_classified > 0:
+        is_prl = binary_prl == 1
+        is_cvs = binary_cvs == 1
+
+        n_lesion_only = np.sum((binary_lesion == 1) & ~is_prl & ~is_cvs)
+        n_prl_only = np.sum(is_prl & ~is_cvs)
+        n_cvs_only = np.sum(is_cvs & ~is_prl)
+        n_prl_and_cvs = np.sum(is_prl & is_cvs)
+
+        log.debug("  - Prediction summary:")
+        log.debug(f"    - # lesions only (no PRL/CVS): {n_lesion_only}")
+        log.debug(f"    - # lesions with PRL only:     {n_prl_only}")
+        log.debug(f"    - # lesions with CVS only:     {n_cvs_only}")
+        log.debug(f"    - # lesions with PRL + CVS:    {n_prl_and_cvs}")
+
     # ========== [STAGE 5] CREATE OUTPUT MASKS ========== #
     log.info("[bold]5/5[/bold] Creating output masks...")
 
