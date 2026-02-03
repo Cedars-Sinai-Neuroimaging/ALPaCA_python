@@ -2,20 +2,24 @@
 """
 Run ALPaCA inference pipeline.
 
-Two modes:
+Two modes for lesion candidates:
 
-1. Explicit paths:
-    alpaca-run \
-        --t1 /path/to/t1.nii.gz \
-        --flair /path/to/flair.nii.gz \
-        --epi /path/to/epi_mag.nii.gz \
-        --phase /path/to/epi_phase.nii.gz \
-        --labels /path/to/lesion_labels.nii.gz \
+1. Using pre-labeled candidates:
+    alpaca-run \\
+        --t1 /path/to/t1.nii.gz \\
+        --flair /path/to/flair.nii.gz \\
+        --epi /path/to/epi_mag.nii.gz \\
+        --phase /path/to/epi_phase.nii.gz \\
+        --labels /path/to/lesion_labels.nii.gz \\
         --output /path/to/output
 
-2. Auto-detect:
-    alpaca-run \
-        --subject-dir /path/to/subject/session_date \
+2. Using a probability map (candidates will be generated):
+    alpaca-run \\
+        --t1 /path/to/t1.nii.gz \\
+        --flair /path/to/flair.nii.gz \\
+        --epi /path/to/epi_mag.nii.gz \\
+        --phase /path/to/epi_phase.nii.gz \\
+        --prob-map /path/to/prob_map.nii.gz \\
         --output /path/to/output
 """
 
@@ -25,44 +29,6 @@ from pathlib import Path
 
 from ..logger import log, set_log_level
 
-def find_file(directory, patterns):
-    """Find first file matching any of the patterns."""
-    directory = Path(directory)
-    for pattern in patterns:
-        matches = list(directory.glob(pattern))
-        if matches:
-            return str(matches[0])
-    return None
-
-
-def auto_detect_files(subject_dir):
-    """Auto-detect MRI files from subject directory."""
-    subject_dir = Path(subject_dir)
-    log.info(f"Auto-detecting files from: '{subject_dir}'...")
-
-    patterns = {
-        't1': ['*_T1_MTTE.nii.gz', 'T1_MTTE.nii.gz', 't1.nii.gz', 'T1.nii.gz', 't1_final.nii.gz'],
-        'flair': ['*_FL_MTTE.nii.gz', 'FLAIR_MTTE.nii.gz', 'flair.nii.gz', 'FLAIR.nii.gz', 'flair_final.nii.gz'],
-        'epi': ['*_T2star_mag_MTTE.nii.gz', '*_T2star_MTTE.nii.gz',
-                'epi_mag.nii.gz', 'EPI_mag.nii.gz', 't2star_mag.nii.gz', 'epi_final.nii.gz'],
-        'phase': ['*_T2star_phase_unwrapped_MTTE.nii.gz',
-                  'epi_phase_unwrapped.nii.gz', 'epi_phase.nii.gz',
-                  't2star_phase_unwrapped.nii.gz', 'phase.nii.gz', 'phase_final.nii.gz'],
-        'labels': ['Lesion_Index_spectral.nii.nii.gz', 'Lesion_Index_Spectral.nii.nii.gz',
-                   'Lesion_Index_spectral.nii.gz', 'lesion_labels.nii.gz',
-                   'lesion_mask.nii.gz', 'labeled_candidates.nii.gz'],
-        'eroded': ['eroded_candidates.nii.gz', 'eroded_labels.nii.gz']
-    }
-
-    files = {}
-    for key, pattern_list in patterns.items():
-        found = find_file(subject_dir, pattern_list)
-        if found:
-            files[key] = found
-            log.debug(f"  - Found {key:<7}: {Path(found).name}")
-
-    return files
-
 
 def main():
     parser = argparse.ArgumentParser(
@@ -70,30 +36,34 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  # Auto-detect files
-  alpaca-run --subject-dir /path/to/subject -o results/
-
-  # Specify files explicitly
+  # Using pre-labeled lesion candidates
   alpaca-run --t1 t1.nii.gz --flair flair.nii.gz --epi epi.nii.gz \\
              --phase phase.nii.gz --labels labels.nii.gz -o results/
+
+  # Using a probability map to generate lesion candidates
+  alpaca-run --t1 t1.nii.gz --flair flair.nii.gz --epi epi.nii.gz \\
+             --phase phase.nii.gz --prob-map prob_map.nii.gz -o results/
 """
     )
 
-    # Input mode
-    input_group = parser.add_argument_group('Input (choose one)')
-    mode = input_group.add_mutually_exclusive_group(required=True)
-    mode.add_argument('--subject-dir', metavar='DIR',
-                      help='Auto-detect files from directory')
-    mode.add_argument('--t1', metavar='FILE',
-                      help='T1 image (requires --flair --epi --phase --labels)')
+    # Input files
+    input_group = parser.add_argument_group('Input files')
+    input_group.add_argument('--t1', metavar='FILE', required=True, help='T1 image')
+    input_group.add_argument('--flair', metavar='FILE', required=True, help='FLAIR image')
+    input_group.add_argument('--epi', metavar='FILE', required=True, help='EPI magnitude')
+    input_group.add_argument('--phase', metavar='FILE', required=True, help='EPI phase (unwrapped)')
+    input_group.add_argument('--eroded-labels', metavar='FILE', help='Pre-eroded labels (optional)')
 
-    # Explicit mode files
-    explicit_group = parser.add_argument_group('Explicit mode (when using --t1)')
-    explicit_group.add_argument('--flair', metavar='FILE', help='FLAIR image')
-    explicit_group.add_argument('--epi', metavar='FILE', help='EPI magnitude')
-    explicit_group.add_argument('--phase', metavar='FILE', help='EPI phase (unwrapped)')
-    explicit_group.add_argument('--labels', metavar='FILE', help='Lesion labels')
-    explicit_group.add_argument('--eroded-labels', metavar='FILE', help='Pre-eroded labels (optional)')
+    # Candidate source
+    candidate_group = parser.add_argument_group('Candidate source (choose one)')
+    source = candidate_group.add_mutually_exclusive_group(required=True)
+    source.add_argument('--labels', metavar='FILE', help='Lesion labels file')
+    source.add_argument('--prob-map', metavar='FILE', help='Lesion probability map (will be labeled)')
+
+    # Candidate generation
+    gen_group = parser.add_argument_group('Candidate generation (when using --prob-map)')
+    gen_group.add_argument('--candidate-threshold', type=float, default=0.05, metavar='FLOAT',
+                           help='Threshold for lesion probability map (default: 0.05)')
 
     # Output
     output_group = parser.add_argument_group('Output')
@@ -147,70 +117,43 @@ Examples:
     else:
         set_log_level("standard")
 
-    # Determine mode and get file paths
-    if args.subject_dir:
-        files = auto_detect_files(args.subject_dir)
-
-        required = ['t1', 'flair', 'epi', 'phase', 'labels']
-        missing = [k for k in required if k not in files]
-
-        if missing:
-            log.error(f"Could not auto-detect: {missing}")
-            log.error(f"Searched in: {args.subject_dir}")
-            log.error("Use explicit mode: --t1, --flair, --epi, --phase, --labels")
-            return 1
-
-        t1_path = files['t1']
-        flair_path = files['flair']
-        epi_path = files['epi']
-        phase_path = files['phase']
-        labels_path = files['labels']
-        eroded_path = files.get('eroded')
-
-    else:
-        # Explicit mode
-        required_args = ['t1', 'flair', 'epi', 'phase', 'labels']
-        missing = [arg for arg in required_args if getattr(args, arg) is None]
-
-        if missing:
-            log.error(f"Missing required arguments: --{', --'.join(missing)}")
-            return 1
-
-        t1_path = args.t1
-        flair_path = args.flair
-        epi_path = args.epi
-        phase_path = args.phase
-        labels_path = args.labels
-        eroded_path = args.eroded_labels
+    # Custom validation for arguments
+    if args.prob_map and args.eroded_labels:
+        log.error("The --eroded-labels option can only be used with --labels, not with --prob-map.")
+        log.error("When using --prob-map, lesion candidates and their eroded versions are generated automatically.")
+        return 1
 
     # Validate paths exist
-    for name, path in [('t1', t1_path), ('flair', flair_path),
-                       ('epi', epi_path), ('phase', phase_path),
-                       ('labels', labels_path)]:
-        if not Path(path).exists():
-            log.error(f"{name} file not found: {path}")
+    paths_to_check = {
+        't1': args.t1,
+        'flair': args.flair,
+        'epi': args.epi,
+        'phase': args.phase,
+        'labels': args.labels,
+        'prob_map': args.prob_map,
+        'eroded_labels': args.eroded_labels,
+        'model_dir': args.model_dir
+    }
+
+    for name, path in paths_to_check.items():
+        if path and not Path(path).exists():
+            log.error(f"{name} file/directory not found: {path}")
             return 1
-
-    if eroded_path and not Path(eroded_path).exists():
-        log.error(f"eroded-labels file not found: {eroded_path}")
-        return 1
-
-    if args.model_dir and not Path(args.model_dir).exists():
-        log.error(f"Model directory not found: {args.model_dir}")
-        return 1
 
     # Run ALPaCA pipeline
     try:
         from ..processing import run_alpaca
 
         results = run_alpaca(
-                t1=t1_path,
-                flair=flair_path,
-                epi=epi_path,
-                phase=phase_path,
-                labeled_candidates=labels_path,
-                eroded_candidates=eroded_path,
+                t1=args.t1,
+                flair=args.flair,
+                epi=args.epi,
+                phase=args.phase,
+                labeled_candidates=args.labels,
+                prob_map=args.prob_map,
+                eroded_candidates=args.eroded_labels,
                 skip_normalization=args.skip_normalization,
+                candidate_threshold=args.candidate_threshold,
                 model_dir=args.model_dir,
                 output_dir=args.output,
                 lesion_priority=args.lesion_threshold,

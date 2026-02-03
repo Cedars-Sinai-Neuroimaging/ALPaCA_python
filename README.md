@@ -33,16 +33,12 @@ alpaca-download-models
 **Command Line**
 
 ```bash
-# Auto-detect files
-alpaca-run --subject-dir /path/to/subject --output results/
-
-# Specify files
 alpaca-run \
     --t1 t1.nii.gz \
     --flair flair.nii.gz \
     --epi epi_mag.nii.gz \
     --phase epi_phase.nii.gz \
-    --labels lesion_labels.nii.gz \
+    --prob-map probability_map.nii.gz \
     --output results/
 ```
 
@@ -54,7 +50,7 @@ results = run_alpaca(
     flair='flair.nii.gz',
     epi='epi.nii.gz',
     phase='phase.nii.gz',
-    labeled_candidates='labels.nii.gz',
+    prob_map='probability_map.nii.gz.nii.gz',
     model_dir='models/',
     output_dir='results/'
 )

@@ -1,4 +1,5 @@
 /src/alpaca/models/
+/example/*
 
 *.nii
 *.nii.gz

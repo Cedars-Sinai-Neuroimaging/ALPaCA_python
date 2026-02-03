@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "alpaca"
-version = "1.0.0"
+version = "1.0.1"
 description = "ALPaCA: Automated Lesion, PRL, and CVS Analysis"
 requires-python = ">=3.8"
 
@@ -14,7 +14,8 @@ dependencies = [
     "nibabel",
     "pandas",
     "scipy",
-    "tqdm",
+    "scikit-image",
+    "rich",
 ]
 
 [project.scripts]
