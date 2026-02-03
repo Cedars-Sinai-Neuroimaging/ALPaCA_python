@@ -36,7 +36,7 @@ def label_lesions(
         return np.zeros_like(prob_map, dtype=int)
 
     # 2. Calculate Hessian Eigenvalues
-    hxx, hxy, hxz, hyy, hyz, hzz = hessian_matrix(prob_map, sigma=sigma)
+    hxx, hxy, hxz, hyy, hyz, hzz = hessian_matrix(prob_map, sigma=sigma, use_gaussian_derivatives=False) # Maintain original behavior for model consistency
     i1, i2, i3 = hessian_matrix_eigvals([hxx, hxy, hxz, hyy, hyz, hzz])
 
     # 3. Find Lesion Centers
@@ -270,14 +270,23 @@ def run_alpaca(
         else:
             eroded = np.asarray(eroded_candidates, dtype=np.int16)
 
+    # Find a reference image path to preserve metadata for output files.
+    ref_img_path = None
+    for potential_ref in [t1, flair, epi, phase, prob_map, labeled_candidates]:
+        if isinstance(potential_ref, (str, Path)):
+            ref_img_path = str(potential_ref)
+            log.debug(f"Using '{Path(ref_img_path).name}' to preserve NIfTI metadata.")
+            break
+
     # Run inference
     results = make_predictions(
         **normalized,
         labeled_candidates=labels,
         eroded_candidates=eroded,
+        ref_img=ref_img_path,
         model_dir=model_dir,
         output_dir=output_dir,
         **inference_kwargs
     )
-    
+
     return results

@@ -94,6 +94,7 @@ def make_predictions(
     phase: Union[str, np.ndarray],
     labeled_candidates: Union[str, np.ndarray],
     eroded_candidates: Union[str, np.ndarray],
+    ref_img: Optional[str] = None,
 
     # Model and output dir
     model_dir: str = None,
@@ -123,6 +124,7 @@ def make_predictions(
         t1, flair, epi, phase: MRI images (file paths or numpy arrays)
         labeled_candidates: Lesion candidates labeled 1, 2, 3, ...
         eroded_candidates: Eroded version of labeled_candidates
+        ref_img: Path to nifti for metadata
         model_dir: Directory containing autoencoder_*.pt and predictor_*.pt files
         output_dir: Where to save results
         lesion_priority: Threshold strategy ('youdens_j', 'specificity', 'sensitivity')
@@ -181,11 +183,12 @@ def make_predictions(
         raise ValueError("n_models must be between 1 and 10")
 
     # Load images if paths provided
-    ref_img = None  # Store reference for metadata preservation
+    ref_nii = None
+    if ref_img:
+        ref_nii = nib.load(ref_img)
+
     if isinstance(labeled_candidates, str):
-        ref_img = nib.load(labeled_candidates)
-        labeled_candidates = ref_img.get_fdata().astype(np.int32)
-        
+        labeled_candidates = load_nifti(labeled_candidates) 
     if isinstance(t1, str):
         t1 = load_nifti(t1)
     if isinstance(flair, str):
@@ -195,7 +198,7 @@ def make_predictions(
     if isinstance(phase, str):
         phase = load_nifti(phase)
     if isinstance(eroded_candidates, str):
-        eroded_candidates = load_nifti(eroded_candidates).astype(np.int32)
+        eroded_candidates = load_nifti(eroded_candidates)
 
     check_same_shape(
         [t1, flair, epi, phase, labeled_candidates, eroded_candidates],
@@ -263,7 +266,6 @@ def make_predictions(
         batch_lesion_to_patch_idx = []
         current_idx = 0
 
-        log.debug(f"    - Creating {n_patches} patches per lesion...")
         for candidate_id in batch_lesion_ids:
             # Find valid patch centers (not on image boundaries)
             valid_coords = get_valid_patch_centers(labeled_candidates, candidate_id)
@@ -309,11 +311,9 @@ def make_predictions(
             continue
 
         # Convert to tensor
-        log.debug(f"    - Moving {len(batch_patches_list)} patches to device...")
         batch_patches = torch.stack(batch_patches_list).to(device)
 
         # Run inference
-        log.debug(f"    - Running {n_models} models...")
         batch_model_predictions = []
         with torch.no_grad():
             for i, model in enumerate(models_list):
@@ -382,7 +382,7 @@ def make_predictions(
         binary_cvs = binary_cvs * binary_lesion
 
         if n_discordant_prl > 0 or n_discordant_cvs > 0:
-            log.info(f"  - Cleared {n_discordant_prl} discordant PRL and {n_discordant_cvs} discordant CVS predictions.")
+            log.debug(f"  - Cleared {n_discordant_prl} discordant PRL and {n_discordant_cvs} discordant CVS predictions.")
 
     # ========== [STAGE 5] CREATE OUTPUT MASKS ========== #
     log.info("[bold]5/5[/bold] Creating output masks...")
@@ -449,9 +449,9 @@ def make_predictions(
         output_dir.mkdir(parents=True, exist_ok=True)
 
         # Preserve metadata from reference image if available
-        if ref_img is not None:
-            affine = ref_img.affine
-            header = ref_img.header
+        if ref_nii is not None:
+            affine = ref_nii.affine
+            header = ref_nii.header
         else:
             log.warning("  - No reference image - output will use identity affine.")
             affine = np.eye(4)
@@ -485,5 +485,3 @@ def make_predictions(
         results['probability_maps'] = probability_maps
 
     return results
-
-
