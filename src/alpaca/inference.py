@@ -153,6 +153,9 @@ def make_predictions(
     if model_dir is None:
         model_dir = Path(__file__).parent / "models"
 
+    if save_outputs and output_dir is None:
+        raise FileNotFoundError(f"Output directory must be specified.")
+        
     if random_seed is not None:
         np.random.seed(random_seed)
         torch.manual_seed(random_seed)
