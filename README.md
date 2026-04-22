@@ -51,7 +51,7 @@ results = run_alpaca(
     flair='flair.nii.gz',
     epi='epi.nii.gz',
     phase='phase.nii.gz',
-    prob_map='probability_map.nii.gz.nii.gz',
+    prob_map='probability_map.nii.gz',
     model_dir='models/',
     output_dir='results/'
 )
