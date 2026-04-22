@@ -62,8 +62,8 @@ Examples:
 
     # Candidate generation
     gen_group = parser.add_argument_group('Candidate generation (when using --prob-map)')
-    gen_group.add_argument('--candidate-threshold', type=float, default=0.05, metavar='FLOAT',
-                           help='Threshold for lesion probability map (default: 0.05)')
+    gen_group.add_argument('--candidate-threshold', type=float, default=None, metavar='FLOAT',
+                           help='Threshold for lesion probability map (required when using --prob-map)')
 
     # Output
     output_group = parser.add_argument_group('Output')
@@ -118,6 +118,9 @@ Examples:
         set_log_level("standard")
 
     # Custom validation for arguments
+    if args.prob_map and args.candidate_threshold is None:
+        parser.error("--candidate-threshold is required when using --prob-map")
+
     if args.prob_map and args.eroded_labels:
         log.error("The --eroded-labels option can only be used with --labels, not with --prob-map.")
         log.error("When using --prob-map, lesion candidates and their eroded versions are generated automatically.")

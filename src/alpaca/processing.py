@@ -14,8 +14,8 @@ from .logger import log
 from .inference import make_predictions
 
 def label_lesions(
-        prob_map: Union[str, np.ndarray], 
-        threshold: float = 0.05, 
+        prob_map: Union[str, np.ndarray],
+        threshold: float,
         sigma: float = 1,
         output_dir: Optional[str] = None):
     """Apply threshold to lesion probability map and split confluent lesions, enumerate with labels""" 
@@ -198,7 +198,7 @@ def run_alpaca(
     labeled_candidates: Optional[Union[str, np.ndarray]] = None,
     eroded_candidates: Optional[Union[str, np.ndarray]] = None,
     skip_normalization: Optional[bool] = False,
-    candidate_threshold: Optional[float] = 0.05,
+    candidate_threshold: Optional[float] = None,
     model_dir: Optional[str] = None,
     output_dir: Optional[str] = None,
     
@@ -213,7 +213,7 @@ def run_alpaca(
         labeled_candidates: Lesion labels (path or array, provide this or prob_map)
         eroded_candidates: Pre-eroded labels (optional, skips erosion if provided)
         skip_normalization: Skip normalization step
-        candidate_threshold: Optional threshold for splitting lesions from probability map (default: 0.05)
+        candidate_threshold: Threshold for splitting lesions from probability map (required when using prob_map)
         model_dir: Directory containing model weights
         output_dir: Where to save results
         **inference_kwargs: Additional arguments passed to make_predictions()
@@ -237,6 +237,8 @@ def run_alpaca(
 
     if labeled_candidates is None and prob_map is None:
         raise ValueError("Either `labeled_candidates` or `prob_map` must be provided.")
+    if prob_map is not None and labeled_candidates is None and candidate_threshold is None:
+        raise ValueError("`candidate_threshold` is required when using `prob_map`.")
 
     # Normalize images
     if not skip_normalization:
