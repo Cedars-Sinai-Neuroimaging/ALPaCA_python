@@ -6,6 +6,7 @@ Python implementation of the [ALPaCA](https://github.com/hufengling/ALPaCA) R pa
 ## Installation
 
 ```bash
+git clone https://github.com/Cedars-Sinai-Neuroimaging/ALPaCA_python.git
 cd ALPacA_python
 pip install -e .
 alpaca-download-models 
