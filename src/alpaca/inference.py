@@ -408,7 +408,7 @@ def make_predictions(
     log.info("[bold]5/5[/bold] Creating output masks...")
 
     # Clever encoding
-    lesion_codes = binary_lesion * 1 + binary_prl * 2 + binary_cvs * 4 
+    lesion_codes = binary_lesion * 1 + binary_prl * 2 + binary_cvs * 4 + (1 - binary_lesion) * 8
     output_mask = np.zeros_like(labeled_candidates, dtype=np.int32)
 
     for candidate_id in range(1, n_lesions + 1):

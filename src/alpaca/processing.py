@@ -260,7 +260,7 @@ def run_alpaca(
         else:
             labels = np.asarray(labeled_candidates, dtype=np.int32)
     else:
-        labels = label_lesions(prob_map=prob_map, threshold=candidate_threshold)
+        labels = label_lesions(prob_map=prob_map, threshold=candidate_threshold, output_dir=output_dir)
 
     # Erode if not provided
     if eroded_candidates is None:
